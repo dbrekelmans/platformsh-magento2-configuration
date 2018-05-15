@@ -14,7 +14,7 @@ class Platformsh
     const MAGENTO_PRODUCTION_MODE = 'production';
     const MAGENTO_DEVELOPER_MODE = 'developer';
 
-    protected $debugMode = isset($_ENV['DEBUG_MODE']) ? (bool) $_ENV['DEBUG_MODE'] : false;
+    protected $debugMode = false;
 
     protected $platformReadWriteDirs = ['generated', 'app/etc'];
 
@@ -45,6 +45,11 @@ class Platformsh
 
     protected $isMasterBranch = null;
     protected $desiredApplicationMode;
+
+    public function __construct()
+    {
+      $this->debugMode = isset($_ENV['DEBUG_MODE']) ? (bool) $_ENV['DEBUG_MODE'] : false;
+    }
 
     /**
      * Parse Platform.sh routes to more readable format.
