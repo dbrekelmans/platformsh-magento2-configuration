@@ -81,6 +81,8 @@ class Platformsh
 
         if (!count($this->urls['secure'])) {
             $this->urls['secure'] = $this->urls['unsecure'];
+        } else if(!count($this->urls['unsecure'])) {
+          $this->urls['unsecure'] = $this->urls['secure'];
         }
 
         $this->log(sprintf("Routes: %s", var_export($this->urls, true)));
