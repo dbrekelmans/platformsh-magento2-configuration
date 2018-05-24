@@ -353,17 +353,17 @@ class Platformsh extends CommandLineExecutable {
     
     $this->magento = new Magento($applicationMode, $this->getDatabaseRelation(), $debug);
   }
-
-  public function build() {
-    if ($this->step !== $this::STEP_BUILD) {
-      $this->exit('You can only trigger the build method in the build step.');
-    }
-
-    $this->log('Starting build...');
-
-    $this->magento->compile();
-//    $this->magento->deployStaticContent(); Not necessary in a headless environment.
-  }
+//
+//  public function build() {
+//    if ($this->step !== $this::STEP_BUILD) {
+//      $this->exit('You can only trigger the build method in the build step.');
+//    }
+//
+//    $this->log('Starting build...');
+//
+//    $this->magento->compile();
+//    $this->magento->deployStaticContent();
+//  }
 
   public function deploy() {
     if ($this->step !== $this::STEP_DEPLOY) {
@@ -373,6 +373,7 @@ class Platformsh extends CommandLineExecutable {
     $this->log('Starting deploy...');
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
+
 
     $this->magento->upgradeDatabase();
     $this->magento->updateConfiguration(
@@ -385,6 +386,9 @@ class Platformsh extends CommandLineExecutable {
       $this->getAdminCredentials(),
       $this->isProductionEnvironment()
     );
+
+    $this->magento->compile();
+    $this->magento->deployStaticContent();
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_DISABLE);
 
