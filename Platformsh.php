@@ -499,8 +499,7 @@ class Platformsh extends CommandLineExecutable {
 
   protected function isProductionEnvironment()
   {
-    $environmentVariables = $this->getEnvironmentVariables();
-    $environment = $environmentVariables['PLATFORM_ENVIRONMENT'];
+    $environment = $_ENV['PLATFORM_BRANCH'];
 
     if (isset($environment) && in_array($environment, $this::PRODUCTION_BRANCHES)) {
       return true;
