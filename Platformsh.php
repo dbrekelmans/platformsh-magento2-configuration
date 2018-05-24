@@ -342,7 +342,13 @@ class Platformsh extends CommandLineExecutable {
   {
     $this->debug = $debug;
     $this->environmentVariables = $this->getEnvironmentVariables();
-    $this->magento = new Magento($this->environmentVariables['APPLICATION_MODE'], $this->getDatabaseRelation(), $debug);
+    $applicationMode = $this->environmentVariables['APPLICATION_MODE'];
+
+    if (!isset($applicationMode)) {
+      $this->exit('Application mode not set.');
+    }
+    
+    $this->magento = new Magento($applicationMode, $this->getDatabaseRelation(), $debug);
   }
 
   public function build() {
