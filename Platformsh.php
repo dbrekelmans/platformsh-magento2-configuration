@@ -274,8 +274,8 @@ class Magento extends CommandLineExecutable {
   protected function dbQuery($query)
   {
     $password = strlen($this->database['password']) ? sprintf('-p%s', $this->database['password']) : '';
-    
-    return $this->execute('mysql -u ' . $this->database['user'] . ' -h ' . $this->database['host'] . ' -e ' . $query . ' ' . $password . ' ' . $this->database['name']);
+
+    return parent::execute('mysql -u ' . $this->database['user'] . ' -h ' . $this->database['host'] . ' -e ' . $query . ' ' . $password . ' ' . $this->database['name']);
   }
 
   protected function getConfig() {
@@ -334,16 +334,12 @@ class Platformsh extends CommandLineExecutable {
   const URL_PREFIX_SECURE = 'https://';
   const URL_PREFIX_UNSECURE = 'http://';
   const PRODUCTION_BRANCHES = ['master', 'production'];
-  const STEP_BUILD = 'build';
-  const STEP_DEPLOY = 'deploy';
 
-  protected $step;
   protected $magento;
   protected $environmentVariables;
 
-  public function __construct(string $step, bool $debug = false)
+  public function __construct(bool $debug = false)
   {
-    $this->step = $step;
     $this->debug = $debug;
     $applicationMode = getenv('APPLICATION_MODE');
 
@@ -353,23 +349,8 @@ class Platformsh extends CommandLineExecutable {
     
     $this->magento = new Magento($applicationMode, $this->getDatabaseRelation(), $debug);
   }
-//
-//  public function build() {
-//    if ($this->step !== $this::STEP_BUILD) {
-//      $this->exit('You can only trigger the build method in the build step.');
-//    }
-//
-//    $this->log('Starting build...');
-//
-//    $this->magento->compile();
-//    $this->magento->deployStaticContent();
-//  }
 
   public function deploy() {
-    if ($this->step !== $this::STEP_DEPLOY) {
-      $this->exit('You can only trigger the deploy method in the deploy step.');
-    }
-
     $this->log('Starting deploy...');
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
