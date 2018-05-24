@@ -342,6 +342,7 @@ class Platformsh extends CommandLineExecutable {
   {
     $this->debug = $debug;
     $this->environmentVariables = $this->getEnvironmentVariables();
+    var_dump($this->getEnvironmentVariables());die();
     $applicationMode = $this->environmentVariables['APPLICATION_MODE'];
 
     if (!isset($applicationMode)) {
