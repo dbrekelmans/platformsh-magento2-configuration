@@ -43,11 +43,15 @@ class Magento extends CommandLineExecutable {
   const MODE_PRODUCTION = 'production';
   const MODE_DEVELOPER = 'developer';
   const CONFIG_ENV = 'app/etc/env.php';
+  const MAINTENANCE_ENABLE = 'enable';
+  const MAINTENANCE_DISABLE = 'disable';
 
   protected $mode;
+  protected $database;
   
-  public function __construct(string $mode, bool $debug = false) {
+  public function __construct(string $mode, array $database, bool $debug = false) {
     $this->debug = $debug;
+    $this->database = $database;
 
     $this->setMode($mode);
   }
@@ -77,23 +81,58 @@ class Magento extends CommandLineExecutable {
     $this->execute('cache:flush');
   }
 
-  public function updateConfiguration(array $relations, $credentials) {
-    $this->setBaseUrls();
+  public function maintenanceMode(string $mode) {
+    if ($mode !== $this::MAINTENANCE_DISABLE && $mode !== $this::MAINTENANCE_ENABLE) {
+      $this->log('Invalid maintenance mode. Skipping...');
+    }
+
+    $this->log('Setting maintenance mode to ' . $mode . '...');
+    $this->execute('maintenance:' . $mode);
+  }
+
+  public function updateConfiguration(array $routes, array $relations, array $credentials, bool $isProductionEnvironment) {
+    $this->setBaseUrls($routes);
     $this->setDatabaseRelation($relations['database']);
     $this->setRedisRelation($relations['redis']);
     $this->setSolrRelation($relations['solr']);
     $this->setAdminCredentials($credentials);
+
+    if ($isProductionEnvironment) {
+      $this->disableTracking();
+    }
   }
 
-  protected function setBaseUrls() {
+  public function disableTracking() {
+    $this->log('Disabling tracking...');
+
+    $this->dbQuery('UPDATE core_config_data SET value = 0 WHERE path = "google/analytics/active";');
+  }
+
+  protected function setBaseUrls(array $routes) {
     $this->log('Setting base URLs...');
-    
-    // TODO
+
+    $this->log(sprintf('Routes: %s', var_export($routes, true)));
+
+    foreach ($routes as $urlType => $urls) {
+      foreach ($urls as $route => $url) {
+        $prefix = 'unsecure' === $urlType ? Platformsh::URL_PREFIX_UNSECURE : Platformsh::URL_PREFIX_SECURE;
+
+        if (!strlen($route)) {
+          $this->dbQuery('UPDATE core_config_data SET value = ' . $url . ' WHERE path = "web/' . $urlType . '/base_url" AND scope_id = "0";');
+          continue;
+        }
+
+        $likeKey = $prefix . $route . '%';
+        $likeKeyParsed = $prefix . str_replace('.', '---', $route) . '%';
+
+        $this->dbQuery('UPDATE core_config_data SET value = ' . $url . ' WHERE path = "web/' . $urlType . '/base_url" AND (value LIKE ' . $likeKey . ' OR value LIKE ' . $likeKeyParsed .');');
+      }
+    }
   }
 
   protected function setDatabaseRelation(array $relation) {
     if ($relation === []) {
-      $this->log('No database relation defined. Skipping...');
+      $this->exit('No database relation defined. This relation is required.');
 
       return;
     }
@@ -186,7 +225,7 @@ class Magento extends CommandLineExecutable {
     $this->dbQuery('UPDATE core_config_data SET value = ' . $relation['path'] . ' WHERE path = "catalog/search/solr_server_path" AND scope_id = "0";');
   }
 
-  protected function setAdminCredentials($credentials) {
+  protected function setAdminCredentials(array $credentials) {
     if ($credentials === []) {
       $this->log('No admin credentials defined. Skipping...');
 
@@ -234,9 +273,9 @@ class Magento extends CommandLineExecutable {
 
   protected function dbQuery($query)
   {
-    $password = strlen($this->dbPassword) ? sprintf('-p%s', $this->dbPassword) : '';
+    $password = strlen($this->database['password']) ? sprintf('-p%s', $this->database['password']) : '';
     
-    return $this->execute('mysql -u ' . $this->dbUser . ' -h ' . $this->dbHost . ' -e ' . $query . ' ' . $password . ' ' . $this->dbName);
+    return $this->execute('mysql -u ' . $this->database['user'] . ' -h ' . $this->database['host'] . ' -e ' . $query . ' ' . $password . ' ' . $this->database['name']);
   }
 
   protected function getConfig() {
@@ -291,9 +330,10 @@ class Magento extends CommandLineExecutable {
 
 
 class Platformsh extends CommandLineExecutable {
+  const MAGIC_ROUTE = '{default}';
   const URL_PREFIX_SECURE = 'https://';
   const URL_PREFIX_UNSECURE = 'http://';
-  const MAGIC_ROUTE = '{default}';
+  const PRODUCTION_BRANCHES = ['master', 'production'];
   
   protected $magento;
   protected $environmentVariables;
@@ -302,7 +342,7 @@ class Platformsh extends CommandLineExecutable {
   {
     $this->debug = $debug;
     $this->environmentVariables = $this->getEnvironmentVariables();
-    $this->magento = new Magento($this->environmentVariables['APPLICATION_MODE'], $debug);
+    $this->magento = new Magento($this->environmentVariables['APPLICATION_MODE'], $this->getDatabaseRelation(), $debug);
   }
 
   public function build() {
@@ -315,12 +355,22 @@ class Platformsh extends CommandLineExecutable {
   public function deploy() {
     $this->log('Starting deploy...');
 
+    $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
+
     $this->magento->upgradeDatabase();
-    $this->magento->updateConfiguration([
-      'database' => $this->getDatabaseRelation(),
-      'redis' => $this->getRedisRelation(),
-      'solr' => $this->getSolrRelation(),
-    ], $this->getAdminCredentials());
+    $this->magento->updateConfiguration(
+      $this->parseRoutes(),
+      [
+        'database' => $this->getDatabaseRelation(),
+        'redis' => $this->getRedisRelation(),
+        'solr' => $this->getSolrRelation(),
+      ],
+      $this->getAdminCredentials(),
+      $this->isProductionEnvironment()
+    );
+
+    $this->magento->maintenanceMode(Magento::MAINTENANCE_DISABLE);
+
   }
 
   protected function getDatabaseRelation() {
@@ -403,6 +453,55 @@ class Platformsh extends CommandLineExecutable {
     ];
   }
 
+  protected function parseRoutes()
+  {
+    $routes = $this->getRoutes();
+    $urls = [
+      'unsecure' => [],
+      'secure' => []
+    ];
+
+    foreach($routes as $key => $val) {
+      if ($val['type'] !== 'upstream') {
+        continue;
+      }
+
+      $urlParts = parse_url($val['original_url']);
+      $originalUrl = str_replace(self::MAGIC_ROUTE, '', $urlParts['host']);
+
+      if(strpos($key, $this::URL_PREFIX_UNSECURE) === 0) {
+        $urls['unsecure'][$originalUrl] = $key;
+        continue;
+      }
+
+      if(strpos($key, $this::URL_PREFIX_SECURE) === 0) {
+        $urls['secure'][$originalUrl] = $key;
+        continue;
+      }
+    }
+
+    if (!count($urls['secure'])) {
+      $urls['secure'] = $urls['unsecure'];
+    }
+    else if(!count($urls['unsecure'])) {
+      $urls['unsecure'] = $urls['secure'];
+    }
+
+    return $urls;
+  }
+
+  protected function isProductionEnvironment()
+  {
+    $environmentVariables = $this->getEnvironmentVariables();
+    $environment = $environmentVariables['PLATFORM_ENVIRONMENT'];
+
+    if (isset($environment) && in_array($environment, $this::PRODUCTION_BRANCHES)) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
    * Get routes information from Platform.sh environment variable.
    *
@@ -432,330 +531,4 @@ class Platformsh extends CommandLineExecutable {
   {
     return json_decode(base64_decode($_ENV['PLATFORM_VARIABLES']), true);
   }
-
-
-
-//    const MAGIC_ROUTE = '{default}';
-
-    const PREFIX_SECURE = 'https://';
-    const PREFIX_UNSECURE = 'http://';
-
-    const GIT_MASTER_BRANCH = 'master';
-
-    const MAGENTO_PRODUCTION_MODE = 'production';
-    const MAGENTO_DEVELOPER_MODE = 'developer';
-
-    protected $debugMode = false;
-
-    protected $platformReadWriteDirs = ['generated', 'app/etc'];
-
-    protected $urls = ['unsecure' => [], 'secure' => []];
-
-    protected $defaultCurrency = 'USD';
-
-    protected $dbHost;
-    protected $dbName;
-    protected $dbUser;
-    protected $dbPassword;
-
-    protected $adminUsername;
-    protected $adminFirstname;
-    protected $adminLastname;
-    protected $adminEmail;
-    protected $adminPassword;
-    protected $adminUrl;
-
-    protected $redisHost;
-    protected $redisScheme;
-    protected $redisPort;
-
-    protected $solrHost;
-    protected $solrPath;
-    protected $solrPort;
-    protected $solrScheme;
-
-    protected $isMasterBranch = null;
-    protected $desiredApplicationMode;
-
-
-
-    /**
-     * Parse Platform.sh routes to more readable format.
-     */
-    public function initRoutes()
-    {
-        $this->log('Initializing routes.');
-
-        $routes = $this->getRoutes();
-
-        foreach($routes as $key => $val) {
-            if ($val['type'] !== 'upstream') {
-                continue;
-            }
-
-            $urlParts = parse_url($val['original_url']);
-            $originalUrl = str_replace(self::MAGIC_ROUTE, '', $urlParts['host']);
-
-            if(strpos($key, self::PREFIX_UNSECURE) === 0) {
-                $this->urls['unsecure'][$originalUrl] = $key;
-                continue;
-            }
-
-            if(strpos($key, self::PREFIX_SECURE) === 0) {
-                $this->urls['secure'][$originalUrl] = $key;
-                continue;
-            }
-        }
-
-        if (!count($this->urls['secure'])) {
-            $this->urls['secure'] = $this->urls['unsecure'];
-        } else if(!count($this->urls['unsecure'])) {
-          $this->urls['unsecure'] = $this->urls['secure'];
-        }
-
-        $this->log(sprintf('Routes: %s', var_export($this->urls, true)));
-    }
-
-    /**
-     * Build application: clear temp directory and move writable directories content to temp.
-     */
-//    public function buildold()
-//    {
-//        $this->log('Start build.');
-//
-//        $this->clearTemp();
-//
-//        $this->log('Copying read/write directories to temp directory.');
-//
-//        foreach ($this->platformReadWriteDirs as $dir) {
-//            $this->execute(sprintf('mkdir -p ./init/%s', $dir));
-//            $this->execute(sprintf('/bin/bash -c "shopt -s dotglob; cp -R %s/* ./init/%s/"', $dir, $dir));
-//            $this->execute(sprintf('rm -rf %s', $dir));
-//            $this->execute(sprintf('mkdir %s', $dir));
-//        }
-//    }
-
-    /**
-     * Deploy application: copy writable directories back, install or update Magento data.
-     */
-    public function deployold()
-    {
-        $this->log('Start deploy.');
-
-        $this->_init();
-
-        $this->log('Copying read/write directories back.');
-
-        foreach ($this->platformReadWriteDirs as $dir) {
-            $this->execute(sprintf('mkdir -p %s', $dir));
-            $this->execute(sprintf('/bin/bash -c "shopt -s dotglob; cp -R ./init/%s/* %s/ || true"', $dir, $dir));
-            $this->log(sprintf('Copied directory: %s', $dir));
-        }
-
-        $this->updateMagento();
-        $this->processMagentoMode();
-        $this->disableGoogleAnalytics();
-    }
-
-    /**
-     * Prepare data needed to install Magento
-     */
-    protected function _init()
-    {
-        $this->log('Preparing environment specific data.');
-
-        $this->initRoutes();
-    }
-
-
-    /**
-     * Update Magento configuration
-     */
-    protected function updateMagento()
-    {
-        $this->log('Updating configuration.');
-
-        $this->updateConfiguration();
-
-        $this->updateAdminCredentials();
-
-        $this->updateSolrConfiguration();
-
-        $this->updateUrls();
-
-        $this->setupUpgrade();
-
-        $this->clearCache();
-    }
-
-    /**
-     * Update admin credentials
-     */
-    protected function updateAdminCredentials()
-    {
-        $this->log('Updating admin credentials.');
-
-        $this->executeDbdbQuery('update admin_user set firstname = ' . $this->adminFirstname . ', lastname = ' . $this->adminLastname . ', email = ' . $this->adminEmail . ', username = ' . $this->adminUsername . ', password=' . $this->generatePassword($this->adminPassword) . ' where user_id = "1";');
-    }
-
-    /**
-     * Update secure and unsecure URLs
-     */
-    protected function updateUrls()
-    {
-        $this->log('Updating secure and unsecure URLs.');
-
-        foreach ($this->urls as $urlType => $urls) {
-            foreach ($urls as $route => $url) {
-                $prefix = 'unsecure' === $urlType ? self::PREFIX_UNSECURE : self::PREFIX_SECURE;
-                if (!strlen($route)) {
-                    $this->executeDbdbQuery('update core_config_data set value = ' . $url . ' where path = "web/$urlType/base_url" and scope_id = "0";');
-                    continue;
-                }
-                $likeKey = $prefix . $route . '%';
-                $likeKeyParsed = $prefix . str_replace('.', '---', $route) . '%';
-                $this->executeDbdbQuery('update core_config_data set value = ' . $url . ' where path = "web/$urlType/base_url" and (value like ' . $likeKey . ' or value like ' . $likeKeyParsed .');');
-            }
-        }
-    }
-
-    /**
-     * Clear content of temp directory
-     */
-    protected function clearTemp()
-    {
-        $this->log('Clearing temporary directory.');
-
-        $this->execute('rm -rf ../init/*');
-    }
-
-    /**
-     * Run Magento setup upgrade
-     */
-    protected function setupUpgrade()
-    {
-        $this->log('Running setup upgrade.');
-
-        $this->execute(
-            'cd bin/; /usr/bin/php ./magento setup:upgrade --keep-generated'
-        );
-    }
-
-    /**
-     * Clear Magento file based cache
-     */
-    protected function clearCache()
-    {
-        $this->log('Clearing application cache.');
-
-        $this->execute(
-            'cd bin/; /usr/bin/php ./magento cache:flush'
-        );
-    }
-
-    /**
-     * Update env.php file content
-     */
-    protected function updateConfiguration()
-    {
-        $this->log('Updating env.php database configuration.');
-
-        $configFileName = 'app/etc/env.php';
-
-        $config = include $configFileName;
-
-        $config['db']['connection']['default']['username'] = $this->dbUser;
-        $config['db']['connection']['default']['host'] = $this->dbHost;
-        $config['db']['connection']['default']['dbname'] = $this->dbName;
-        $config['db']['connection']['default']['password'] = $this->dbPassword;
-
-        $config['db']['connection']['indexer']['username'] = $this->dbUser;
-        $config['db']['connection']['indexer']['host'] = $this->dbHost;
-        $config['db']['connection']['indexer']['dbname'] = $this->dbName;
-        $config['db']['connection']['indexer']['password'] = $this->dbPassword;
-
-        if (
-            isset($config['cache']['frontend']['default']['backend']) &&
-            isset($config['cache']['frontend']['default']['backend_options']) &&
-            'Cm_Cache_Backend_Redis' == $config['cache']['frontend']['default']['backend']
-        ) {
-            $this->log('Updating env.php Redis cache configuration.');
-
-            $config['cache']['frontend']['default']['backend_options']['server'] = $this->redisHost;
-            $config['cache']['frontend']['default']['backend_options']['port'] = $this->redisPort;
-        }
-
-        if (
-            isset($config['cache']['frontend']['page_cache']['backend']) &&
-            isset($config['cache']['frontend']['page_cache']['backend_options']) &&
-            'Cm_Cache_Backend_Redis' == $config['cache']['frontend']['page_cache']['backend']
-        ) {
-            $this->log('Updating env.php Redis page cache configuration.');
-
-            $config['cache']['frontend']['page_cache']['backend_options']['server'] = $this->redisHost;
-            $config['cache']['frontend']['page_cache']['backend_options']['port'] = $this->redisPort;
-        }
-        $config['backend']['frontName'] = $this->adminUrl;
-
-        $updatedConfig = '<?php'  . '\n' . 'return ' . var_export($config, true) . ';';
-
-        file_put_contents($configFileName, $updatedConfig);
-    }
-
-    /**
-     * If current deploy is about master branch
-     *
-     * @return boolean
-     */
-    protected function isMasterBranch()
-    {
-        if (is_null($this->isMasterBranch)) {
-            if (isset($_ENV['PLATFORM_ENVIRONMENT']) && $_ENV['PLATFORM_ENVIRONMENT'] == self::GIT_MASTER_BRANCH) {
-                $this->isMasterBranch = true;
-            } else {
-                $this->isMasterBranch = false;
-            }
-        }
-        return $this->isMasterBranch;
-    }
-
-    /**
-     * Executes database query
-     *
-     * @param string $query
-     * $query must completed, finished with semicolon (;)
-     * If branch isn't master - disable Google Analytics
-     */
-    protected function disableGoogleAnalytics()
-    {
-        if (!$this->isMasterBranch()) {
-            $this->log('Disabling Google Analytics');
-            $this->executeDbdbQuery('update core_config_data set value = 0 where path = "google/analytics/active";');
-        }
-    }
-
-    /**
-     * Based on variable APPLICATION_MODE. Production mode by default
-     */
-    protected function processMagentoMode()
-    {
-
-        $desiredApplicationMode = ($this->desiredApplicationMode) ? $this->desiredApplicationMode : self::MAGENTO_PRODUCTION_MODE;
-
-        $this->log('Set Magento application to ' . $desiredApplicationMode . ' mode');
-        $this->log('Changing application mode.');
-        $this->execute('cd bin/; /usr/bin/php ./magento deploy:mode:set $desiredApplicationMode --skip-compilation');
-        if ($desiredApplicationMode == self::MAGENTO_DEVELOPER_MODE) {
-            $locales = '';
-            $output = $this->executeDbdbQuery('select value from core_config_data where path="general/locale/code";');
-            if (is_array($output) && count($output) > 1) {
-                $locales = $output;
-                array_shift($locales);
-                $locales = implode(' ', $locales);
-            }
-            $logMessage = $locales ? 'Generating static content for locales $locales.' : 'Generating static content.';
-            $this->log($logMessage);
-            $this->execute('cd bin/; /usr/bin/php ./magento setup:static-content:deploy $locales');
-        }
-    }
 }
