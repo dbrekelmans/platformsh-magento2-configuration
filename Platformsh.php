@@ -334,15 +334,18 @@ class Platformsh extends CommandLineExecutable {
   const URL_PREFIX_SECURE = 'https://';
   const URL_PREFIX_UNSECURE = 'http://';
   const PRODUCTION_BRANCHES = ['master', 'production'];
-  
+  const STEP_BUILD = 'build';
+  const STEP_DEPLOY = 'deploy';
+
+  protected $step;
   protected $magento;
   protected $environmentVariables;
 
-  public function __construct(bool $debug = false)
+  public function __construct(string $step, bool $debug = false)
   {
+    $this->step = $step;
     $this->debug = $debug;
-    $this->environmentVariables = $this->getEnvironmentVariables();
-    $applicationMode = $this->environmentVariables['APPLICATION_MODE'];
+    $applicationMode = getenv('APPLICATION_MODE');
 
     if (!isset($applicationMode)) {
       $this->exit('Application mode not set.');
@@ -352,13 +355,21 @@ class Platformsh extends CommandLineExecutable {
   }
 
   public function build() {
+    if ($this->step !== $this::STEP_BUILD) {
+      $this->exit('You can only trigger the build method in the build step.');
+    }
+
     $this->log('Starting build...');
 
     $this->magento->compile();
-    $this->magento->deployStaticContent();
+//    $this->magento->deployStaticContent(); Not necessary in a headless environment.
   }
 
   public function deploy() {
+    if ($this->step !== $this::STEP_DEPLOY) {
+      $this->exit('You can only trigger the deploy method in the deploy step.');
+    }
+
     $this->log('Starting deploy...');
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
@@ -498,7 +509,7 @@ class Platformsh extends CommandLineExecutable {
 
   protected function isProductionEnvironment()
   {
-    $environment = $_ENV['PLATFORM_BRANCH'];
+    $environment = getenv('PLATFORM_BRANCH');
 
     if (isset($environment) && in_array($environment, $this::PRODUCTION_BRANCHES)) {
       return true;
@@ -514,7 +525,7 @@ class Platformsh extends CommandLineExecutable {
    */
   protected function getRoutes()
   {
-    return json_decode(base64_decode($_ENV['PLATFORM_ROUTES']), true);
+    return json_decode(base64_decode(getenv('PLATFORM_ROUTES')), true);
   }
 
   /**
@@ -524,7 +535,7 @@ class Platformsh extends CommandLineExecutable {
    */
   protected function getRelationships()
   {
-    return json_decode(base64_decode($_ENV['PLATFORM_RELATIONSHIPS']), true);
+    return json_decode(base64_decode(getenv('PLATFORM_RELATIONSHIPS')), true);
   }
 
   /**
@@ -534,6 +545,6 @@ class Platformsh extends CommandLineExecutable {
    */
   protected function getEnvironmentVariables()
   {
-    return json_decode(base64_decode($_ENV['PLATFORM_VARIABLES']), true);
+    return json_decode(base64_decode(getenv('PLATFORM_VARIABLES')), true);
   }
 }
