@@ -42,7 +42,7 @@ class CommandLineExecutable {
 class Magento extends CommandLineExecutable {
   const MODE_PRODUCTION = 'production';
   const MODE_DEVELOPER = 'developer';
-  const CONFIG_ENV = 'app/etc/env.php';
+  const CONFIG_ENV = '/app/etc/env.php';
   const MAINTENANCE_ENABLE = 'enable';
   const MAINTENANCE_DISABLE = 'disable';
 
