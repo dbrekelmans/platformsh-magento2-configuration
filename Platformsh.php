@@ -275,7 +275,7 @@ class Magento extends CommandLineExecutable {
   {
     $password = strlen($this->database['password']) ? sprintf('-p%s', $this->database['password']) : '';
 
-    return parent::execute('mysql -h ' . $this->database['host'] . ' -D ' . $this->database['name'] . ' -u ' . $this->database['user'] . ' -p ' . $password . ' -e \'' . $query . '\'');
+    return parent::execute('mysql -h ' . $this->database['host'] . ' -D ' . $this->database['name'] . ' -u ' . $this->database['user'] . ' -e \'' . $query . '\' ' . $password);
   }
 
   protected function getConfig() {
@@ -422,27 +422,29 @@ class Platformsh extends CommandLineExecutable {
   protected function getAdminCredentials() {
     $environmentVariables = $this->getEnvironmentVariables();
 
-    $username = $environmentVariables['ADMIN_USERNAME'];
-    $password = $environmentVariables['ADMIN_PASSWORD'];
-    $firstname = $environmentVariables['ADMIN_FIRSTNAME'];
-    $lastname = $environmentVariables['ADMIN_LASTNAME'];
-    $email = $environmentVariables['ADMIN_EMAIL'];
-    $url = $environmentVariables['ADMIN_URL'];
-
-    if (!isset($username) || !isset($password) || !isset($email)) {
+    if (!isset($environmentVariables['ADMIN_USERNAME']) || !isset($environmentVariables['ADMIN_PASSWORD']) || !isset($environmentVariables['ADMIN_EMAIL'])) {
       $this->exit('Invalid admin credentials.');
     }
 
-    if (!isset($firstname)) {
-      $firstname = 'Admin';
+    $username = $environmentVariables['ADMIN_USERNAME'];
+    $password = $environmentVariables['ADMIN_PASSWORD'];
+    $email = $environmentVariables['ADMIN_EMAIL'];
+
+    // Default values
+    $firstname = 'Admin';
+    $lastname = 'Admin';
+    $url = 'admin';
+
+    if (isset($environmentVariables['ADMIN_FIRSTNAME'])) {
+      $firstname = $environmentVariables['ADMIN_FIRSTNAME'];
     }
 
-    if (!isset($lastname)) {
-      $lastname = 'Admin';
+    if (isset($environmentVariables['ADMIN_LASTNAME'])) {
+      $lastname = $environmentVariables['ADMIN_LASTNAME'];
     }
 
-    if (!isset($url)) {
-      $url = 'admin_1234567890';
+    if (isset($environmentVariables['ADMIN_URL'])) {
+      $url = $environmentVariables['ADMIN_URL'];
     }
 
     return [
