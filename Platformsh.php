@@ -48,12 +48,14 @@ class Magento extends CommandLineExecutable {
 
   protected $mode;
   protected $database;
+  protected $config;
   
   public function __construct(string $mode, array $database, bool $debug = false) {
     $this->debug = $debug;
     $this->database = $database;
 
     $this->setMode($mode);
+    $this->config = $this->readConfig();
   }
 
   public function execute($command)
@@ -100,6 +102,8 @@ class Magento extends CommandLineExecutable {
     if ($isProductionEnvironment) {
       $this->disableTracking();
     }
+
+    $this->saveConfig($this->config);
   }
 
   public function disableTracking() {
@@ -143,19 +147,15 @@ class Magento extends CommandLineExecutable {
 
     $this->log('Updating database relation...');
 
-    $config = $this->getConfig();
+    $this->config['db']['connection']['default']['host'] = $relation['host'];
+    $this->config['db']['connection']['default']['dbname'] = $relation['name'];
+    $this->config['db']['connection']['default']['username'] = $relation['user'];
+    $this->config['db']['connection']['default']['password'] = $relation['password'];
 
-    $config['db']['connection']['default']['host'] = $relation['host'];
-    $config['db']['connection']['default']['dbname'] = $relation['name'];
-    $config['db']['connection']['default']['username'] = $relation['user'];
-    $config['db']['connection']['default']['password'] = $relation['password'];
-
-    $config['db']['connection']['indexer']['host'] = $relation['host'];
-    $config['db']['connection']['indexer']['dbname'] = $relation['name'];
-    $config['db']['connection']['indexer']['username'] = $relation['user'];
-    $config['db']['connection']['indexer']['password'] = $relation['password'];
-
-    $this->setConfig($config);
+    $this->config['db']['connection']['indexer']['host'] = $relation['host'];
+    $this->config['db']['connection']['indexer']['dbname'] = $relation['name'];
+    $this->config['db']['connection']['indexer']['username'] = $relation['user'];
+    $this->config['db']['connection']['indexer']['password'] = $relation['password'];
   }
 
   protected function setRedisRelation(array $relation) {
@@ -171,39 +171,35 @@ class Magento extends CommandLineExecutable {
 
     $this->log('Updating redis relation...');
 
-    $config = $this->getConfig();
-
     // Default cache
     if (
-      isset($config['cache']['frontend']['default']['backend']) &&
-      isset($config['cache']['frontend']['default']['backend_options']) &&
-      $config['cache']['frontend']['default']['backend'] === 'Cm_Cache_Backend_Redis'
+      isset($this->config['cache']['frontend']['default']['backend']) &&
+      isset($this->config['cache']['frontend']['default']['backend_options']) &&
+      $this->config['cache']['frontend']['default']['backend'] === 'Cm_Cache_Backend_Redis'
     ) {
-      $config['cache']['frontend']['default']['backend_options']['server'] = $relation['host'];
-      $config['cache']['frontend']['default']['backend_options']['port'] = $relation['port'];
+      $this->config['cache']['frontend']['default']['backend_options']['server'] = $relation['host'];
+      $this->config['cache']['frontend']['default']['backend_options']['port'] = $relation['port'];
     }
 
     // Page cache
     if (
-      isset($config['cache']['frontend']['page_cache']['backend']) &&
-      isset($config['cache']['frontend']['page_cache']['backend_options']) &&
-      $config['cache']['frontend']['page_cache']['backend'] === 'Cm_Cache_Backend_Redis'
+      isset($this->config['cache']['frontend']['page_cache']['backend']) &&
+      isset($this->config['cache']['frontend']['page_cache']['backend_options']) &&
+      $this->config['cache']['frontend']['page_cache']['backend'] === 'Cm_Cache_Backend_Redis'
     ) {
-      $config['cache']['frontend']['page_cache']['backend_options']['server'] = $relation['host'];
-      $config['cache']['frontend']['page_cache']['backend_options']['port'] = $relation['port'];
+      $this->config['cache']['frontend']['page_cache']['backend_options']['server'] = $relation['host'];
+      $this->config['cache']['frontend']['page_cache']['backend_options']['port'] = $relation['port'];
     }
 
     // Session cache
     if (
-      isset($config['session']['save']) &&
-      isset($config['session']['redis']) &&
-      $config['session']['save'] === 'redis'
+      isset($this->config['session']['save']) &&
+      isset($this->config['session']['redis']) &&
+      $this->config['session']['save'] === 'redis'
     ) {
-      $config['session']['redis']['host'] = $relation['host'];
-      $config['session']['redis']['port'] = $relation['port'];
+      $this->config['session']['redis']['host'] = $relation['host'];
+      $this->config['session']['redis']['port'] = $relation['port'];
     }
-
-    $this->setConfig($config);
   }
 
   protected function setSolrRelation(array $relation) {
@@ -278,14 +274,14 @@ class Magento extends CommandLineExecutable {
     return parent::execute('mysql -h ' . $this->database['host'] . ' -D ' . $this->database['name'] . ' -u ' . $this->database['user'] . ' -e \'' . $query . '\' ' . $password);
   }
 
-  protected function getConfig() {
+  protected function readConfig() {
     /** @noinspection PhpIncludeInspection */
     $config = include $this::CONFIG_ENV;
 
     return $config;
   }
 
-  protected function setConfig(array $config) {
+  public function saveConfig($config) {
     $updatedConfig = '<?php'  . '\n' . 'return ' . var_export($config, true) . ';';
 
     file_put_contents($this::CONFIG_ENV, $updatedConfig);
