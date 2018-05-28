@@ -105,7 +105,7 @@ class Magento extends CommandLineExecutable {
   public function disableTracking() {
     $this->log('Disabling tracking...');
 
-    $this->dbQuery('UPDATE core_config_data SET value = 0 WHERE path = "google/analytics/active";');
+    $this->dbQuery('UPDATE `core_config_data` SET value = `0` WHERE path = `google/analytics/active`;');
   }
 
   protected function setBaseUrls(array $routes) {
@@ -118,14 +118,14 @@ class Magento extends CommandLineExecutable {
         $prefix = 'unsecure' === $urlType ? Platformsh::URL_PREFIX_UNSECURE : Platformsh::URL_PREFIX_SECURE;
 
         if (!strlen($route)) {
-          $this->dbQuery('UPDATE core_config_data SET value = ' . $url . ' WHERE path = "web/' . $urlType . '/base_url" AND scope_id = "0";');
+          $this->dbQuery('UPDATE `core_config_data` SET value = `' . $url . '` WHERE path = `web/' . $urlType . '/base_url` AND scope_id = `0`;');
           continue;
         }
 
         $likeKey = $prefix . $route . '%';
         $likeKeyParsed = $prefix . str_replace('.', '---', $route) . '%';
 
-        $this->dbQuery('UPDATE core_config_data SET value = ' . $url . ' WHERE path = "web/' . $urlType . '/base_url" AND (value LIKE ' . $likeKey . ' OR value LIKE ' . $likeKeyParsed .');');
+        $this->dbQuery('UPDATE `core_config_data` SET value = `' . $url . '` WHERE path = `web/' . $urlType . '/base_url` AND (value LIKE `' . $likeKey . '` OR value LIKE `' . $likeKeyParsed .'`);');
       }
     }
   }
@@ -219,10 +219,10 @@ class Magento extends CommandLineExecutable {
 
     $this->log('Updating solr relation...');
 
-    $this->dbQuery('UPDATE core_config_data SET value = ' . $relation['host'] . ' WHERE path = "catalog/search/solr_server_hostname" AND scope_id = "0";');
-    $this->dbQuery('UPDATE core_config_data SET value = ' . $relation['port'] . ' WHERE path = "catalog/search/solr_server_port" AND scope_id = "0";');
-    $this->dbQuery('UPDATE core_config_data SET value = ' . $relation['scheme'] . ' WHERE path = "catalog/search/solr_server_username" AND scope_id = "0";');
-    $this->dbQuery('UPDATE core_config_data SET value = ' . $relation['path'] . ' WHERE path = "catalog/search/solr_server_path" AND scope_id = "0";');
+    $this->dbQuery('UPDATE `core_config_data` SET value = `' . $relation['host'] . '` WHERE path = `catalog/search/solr_server_hostname` AND scope_id = `0`;');
+    $this->dbQuery('UPDATE `core_config_data` SET value = `' . $relation['port'] . '` WHERE path = `catalog/search/solr_server_port` AND scope_id = `0`;');
+    $this->dbQuery('UPDATE `core_config_data` SET value = `' . $relation['scheme'] . '` WHERE path = `catalog/search/solr_server_username` AND scope_id = `0`;');
+    $this->dbQuery('UPDATE `core_config_data` SET value = `' . $relation['path'] . '` WHERE path = `catalog/search/solr_server_path` AND scope_id = `0`;');
   }
 
   protected function setAdminCredentials(array $credentials) {
@@ -236,7 +236,7 @@ class Magento extends CommandLineExecutable {
       $this->exit('Invalid admin credentials: ' . print_r($credentials, true));
     }
 
-    $this->dbQuery('UPDATE admin_user SET firstname = ' . $credentials['firstname'] . ', lastname = ' . $credentials['lastname'] . ', email = ' . $credentials['email'] . ', username = ' . $credentials['username'] . ', password =' . $this->hashPassword($credentials['password']) . ' WHERE user_id = "1";');
+    $this->dbQuery('UPDATE `admin_user` SET firstname = `' . $credentials['firstname'] . '`, lastname = `' . $credentials['lastname'] . '`, email = `' . $credentials['email'] . '`, username = `' . $credentials['username'] . '`, password = `' . $this->hashPassword($credentials['password']) . '` WHERE user_id = `1`;');
   }
 
   protected function setMode($mode) {
@@ -256,7 +256,7 @@ class Magento extends CommandLineExecutable {
   public function deployStaticContent() {
     if ($this->mode === $this::MODE_DEVELOPER) {
       $locales = '';
-      $output = $this->dbQuery('SELECT value FROM core_config_data WHERE path="general/locale/code";');
+      $output = $this->dbQuery('SELECT value FROM `core_config_data` WHERE path=`general/locale/code`;');
       
       if (is_array($output) && count($output) > 1) {
         $locales = $output;
@@ -275,7 +275,7 @@ class Magento extends CommandLineExecutable {
   {
     $password = strlen($this->database['password']) ? sprintf('-p%s', $this->database['password']) : '';
 
-    return parent::execute('mysql -u ' . $this->database['user'] . ' -h ' . $this->database['host'] . ' -e ' . $query . ' ' . $password . ' ' . $this->database['name']);
+    return parent::execute('mysql -h ' . $this->database['host'] . ' -D ' . $this->database['name'] . ' -u ' . $this->database['user'] . ' -p ' . $password . ' -e \'' . $query . '\'');
   }
 
   protected function getConfig() {
