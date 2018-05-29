@@ -233,6 +233,12 @@ class Magento extends CommandLineExecutable {
     }
 
     $this->dbQuery('UPDATE `admin_user` SET `firstname` = "' . $credentials['firstname'] . '", `lastname` = "' . $credentials['lastname'] . '", `email` = "' . $credentials['email'] . '", `username` = "' . $credentials['username'] . '", `password` = "' . $this->hashPassword($credentials['password']) . '" WHERE `user_id` = "1";');
+
+    if (!isset($credentials['url'])) {
+      $this->exit('Invalid admin url: ' . print_r($credentials, true));
+    }
+
+    $this->config['backend']['frontName'] = $credentials['url'];
   }
 
   protected function setMode($mode) {
