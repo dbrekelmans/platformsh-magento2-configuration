@@ -209,7 +209,7 @@ class Magento extends CommandLineExecutable {
       return;
     }
 
-    if (!isset($relation['host']) || !isset($relation['path']) || !isset($relation['port']) || !isset($relation['scheme '])) {
+    if (!isset($relation['host']) || !isset($relation['path']) || !isset($relation['port']) || !isset($relation['scheme'])) {
       $this->exit('Invalid solr relation: ' . print_r($relation, true));
     }
 
