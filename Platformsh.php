@@ -282,7 +282,7 @@ class Magento extends CommandLineExecutable {
   }
 
   public function saveConfig($config) {
-    $updatedConfig = '<?php'  . '\n' . 'return ' . var_export($config, true) . ';';
+    $updatedConfig = '<?php'  . PHP_EOL . 'return ' . var_export($config, true) . ';';
 
     file_put_contents($this::CONFIG_ENV, $updatedConfig);
   }
