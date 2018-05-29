@@ -77,7 +77,7 @@ class Magento extends CommandLineExecutable {
     $this->execute('setup:upgrade --keep-generated');
   }
 
-  protected function clearCache() {
+  public function clearCache() {
     $this->log('Clearing cache...');
 
     $this->execute('cache:flush');
@@ -256,7 +256,7 @@ class Magento extends CommandLineExecutable {
   }
 
   public function deployStaticContent() {
-    if ($this->mode === $this::MODE_DEVELOPER) {
+    if ($this->mode !== $this::MODE_DEVELOPER) {
       $locales = '';
       $output = $this->dbQuery('SELECT `value` FROM `core_config_data` WHERE `path` = "general/locale/code";');
       
@@ -372,6 +372,7 @@ class Platformsh extends CommandLineExecutable {
 
     $this->magento->compile();
     $this->magento->deployStaticContent();
+    $this->magento->clearCache();
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_DISABLE);
 
