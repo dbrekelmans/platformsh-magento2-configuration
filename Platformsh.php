@@ -93,10 +93,10 @@ class Magento extends CommandLineExecutable {
   }
 
   public function updateConfiguration(array $routes, array $relations, array $credentials, bool $isProductionEnvironment) {
-    $this->setBaseUrls($routes);
     $this->setDatabaseRelation($relations['database']);
     $this->setRedisRelation($relations['redis']);
     $this->setSolrRelation($relations['solr']);
+    $this->setBaseUrls($routes);
     $this->setAdminCredentials($credentials);
 
     if ($isProductionEnvironment) {
@@ -349,10 +349,6 @@ class Platformsh extends CommandLineExecutable {
   public function deploy() {
     $this->log('Starting deploy...');
 
-    $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
-
-
-    $this->magento->upgradeDatabase();
     $this->magento->updateConfiguration(
       $this->parseRoutes(),
       [
@@ -363,6 +359,10 @@ class Platformsh extends CommandLineExecutable {
       $this->getAdminCredentials(),
       $this->isProductionEnvironment()
     );
+
+    $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
+
+    $this->magento->upgradeDatabase();
 
     $this->magento->compile();
     $this->magento->deployStaticContent();
