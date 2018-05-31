@@ -1,7 +1,7 @@
 <?php
 
 $debug = false;
-if (coinfin_array('--debug', $argv)) {
+if (in_array('--debug', $argv)) {
   $debug = true;
 }
 
