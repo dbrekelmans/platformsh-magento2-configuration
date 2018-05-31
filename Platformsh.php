@@ -11,14 +11,14 @@ class CommandLineExecutable {
 
   public function execute($command) {
     if ($this->debug) {
-      $this->log('Executing command: ' . $command);
+      $this->log('[DEBUG] Executing command: ' . $command);
     }
 
     exec($command, $output, $status);
 
     if ($this->debug) {
-      $this->log('Status: ' . var_export($status, true));
-      $this->log('Output: ' . var_export($output, true));
+      $this->log('[DEBUG] Status: ' . var_export($status, true));
+      $this->log('[DEBUG] Output: ' . var_export($output, true));
     }
 
     if ($status != 0) {
@@ -83,6 +83,12 @@ class Magento extends CommandLineExecutable {
     $this->execute('cache:flush');
   }
 
+  public function importConfiguration() {
+    $this->log('Importing configuration...');
+
+    $this->execute('app:config:import');
+  }
+
   public function maintenanceMode(string $mode) {
     if ($mode !== $this::MAINTENANCE_DISABLE && $mode !== $this::MAINTENANCE_ENABLE) {
       $this->log('Invalid maintenance mode. Skipping...');
@@ -93,6 +99,8 @@ class Magento extends CommandLineExecutable {
   }
 
   public function updateConfiguration(array $routes, array $relations, array $credentials, bool $isProductionEnvironment) {
+    $this->log('Updating configuration...');
+
     $this->setDatabaseRelation($relations['database']);
     $this->setRedisRelation($relations['redis']);
     $this->setSolrRelation($relations['solr']);
@@ -355,6 +363,7 @@ class Platformsh extends CommandLineExecutable {
   public function deploy() {
     $this->log('Starting deploy...');
 
+    $this->magento->importConfiguration();
     $this->magento->updateConfiguration(
       $this->parseRoutes(),
       [
@@ -369,6 +378,7 @@ class Platformsh extends CommandLineExecutable {
     $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
 
     $this->magento->upgradeDatabase();
+
 
     $this->magento->compile();
     $this->magento->deployStaticContent();
