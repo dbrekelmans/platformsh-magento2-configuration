@@ -363,7 +363,6 @@ class Platformsh extends CommandLineExecutable {
   public function deploy() {
     $this->log('Starting deploy...');
 
-    $this->magento->importConfiguration();
     $this->magento->updateConfiguration(
       $this->parseRoutes(),
       [
@@ -374,6 +373,7 @@ class Platformsh extends CommandLineExecutable {
       $this->getAdminCredentials(),
       $this->isProductionEnvironment()
     );
+    $this->magento->importConfiguration();
 
     $this->magento->maintenanceMode(Magento::MAINTENANCE_ENABLE);
 
